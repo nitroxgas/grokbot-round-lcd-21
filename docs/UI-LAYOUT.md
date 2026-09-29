@@ -35,3 +35,15 @@ Z_SLOT_A/B/C, Z_ACTION_PRIMARY, Z_ACTION_BACK, Z_WIFI (hold).
 - Anim mínima v0.2: `lv_anim` no border do disco (breathe idle, pulse working); sem assets bitmap pesados.
 - Manter i18n pt/en/es nos strings de UI.
 - `pio run -e waveshare_round_21` deve continuar SUCCESS. **Sem flash.**
+
+## Anim polish v0.3 (alvo firmware)
+
+| Estado | Animação |
+|--------|----------|
+| HOME / idle | breathe: border opacity + leve scale do disco (~1.4s) + halo azul |
+| WORKING | pulse rápido (~0.45s) + 3 arcs rotativos âmbar |
+| DONE / CONFIRM | pop scale overshoot no disco + check |
+| ERROR | rim vermelho buzz (espessura) + leve shake do ícone |
+| FLEET | card do slot `working` com border pulse |
+
+Projeção visual: `docs/ui-mocks/proj-*.gif` + `proj-contact-v0.3.png`.
