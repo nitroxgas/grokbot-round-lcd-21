@@ -1,9 +1,7 @@
 #include "touch.h"
 #include "pins.h"
 #include "tca9554.h"
-#include "buzzer.h"
 #include "display.h"
-#include "webhook.h"
 #include "config.h"
 
 #include <Wire.h>
@@ -17,9 +15,11 @@ lv_indev_drv_t g_indevDrv;
 bool g_pressed = false;
 int16_t g_lastX = 0;
 int16_t g_lastY = 0;
-uint32_t g_lastZoneMs = 0;
+uint32_t g_pressStartMs = 0;
+bool g_wifiHoldFired = false;
 
 constexpr uint8_t kRegFinger = 0x02;
+constexpr uint32_t kWifiHoldMs = 800;
 
 bool cst820Read(int16_t* x, int16_t* y, bool* pressed) {
   Wire.beginTransmission(CST820_ADDR);
@@ -50,52 +50,69 @@ void indevRead(lv_indev_drv_t* /*drv*/, lv_indev_data_t* data) {
   data->state = g_pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
 }
 
-void defaultZoneCb(TouchZone zone) {
-  WebhookEvent ev = WebhookEvent::PRIMARY;
-  switch (zone) {
-    case TouchZone::Z_SLOT_A: ev = WebhookEvent::SLOT_A; break;
-    case TouchZone::Z_SLOT_B: ev = WebhookEvent::SLOT_B; break;
-    case TouchZone::Z_SLOT_C: ev = WebhookEvent::SLOT_C; break;
-    case TouchZone::Z_ACTION_PRIMARY: ev = WebhookEvent::PRIMARY; break;
-    case TouchZone::Z_ACTION_BACK: ev = WebhookEvent::BACK; break;
-    case TouchZone::Z_WIFI: ev = WebhookEvent::WIFI; break;
-    default: return;
-  }
-  buzzerPulse(BuzzerPattern::TAP);
-  displaySetState(UiState::TOUCH_CONFIRM);
-  webhookFire(ev);
-  buzzerPulse(BuzzerPattern::CONFIRM);
-}
+void defaultZoneCb(TouchZone zone) { displayFireZone(zone); }
 
 }  // namespace
 
 TouchZone touchHitTest(int16_t x, int16_t y) {
-  // Logical zones on 480×480 circle (center 240,240)
   const int16_t cx = 240;
   const int16_t cy = 240;
   const int16_t dx = static_cast<int16_t>(x - cx);
   const int16_t dy = static_cast<int16_t>(y - cy);
   const int32_t r2 = static_cast<int32_t>(dx) * dx + static_cast<int32_t>(dy) * dy;
   if (r2 > (230L * 230L)) {
-    return TouchZone::None;  // outside active area
+    return TouchZone::None;
   }
 
-  // Top band: Wi‑Fi (hold area near top)
+  // Top band: Wi‑Fi hold zone
   if (y < 90) {
     return TouchZone::Z_WIFI;
   }
-  // Bottom band: back left / primary right
-  if (y > 390) {
-    return (x < cx) ? TouchZone::Z_ACTION_BACK : TouchZone::Z_ACTION_PRIMARY;
+
+  const UiState st = displayGetState();
+
+  switch (st) {
+    case UiState::HOME:
+      // Lower arc pills A / B / C
+      if (y > 340) {
+        if (x < 160) return TouchZone::Z_SLOT_A;
+        if (x > 320) return TouchZone::Z_SLOT_C;
+        return TouchZone::Z_SLOT_B;
+      }
+      break;
+
+    case UiState::FLEET_STATUS:
+      // Three arc cards roughly y 280–380
+      if (y > 250 && y < 400) {
+        if (x < 160) return TouchZone::Z_SLOT_A;
+        if (x > 320) return TouchZone::Z_SLOT_C;
+        return TouchZone::Z_SLOT_B;
+      }
+      break;
+
+    case UiState::TOUCH_CONFIRM:
+    case UiState::ERROR:
+      if (y > 360) {
+        return (x < cx) ? TouchZone::Z_ACTION_BACK : TouchZone::Z_ACTION_PRIMARY;
+      }
+      break;
+
+    case UiState::WORKING:
+    case UiState::DONE:
+      if (y > 360) {
+        return TouchZone::Z_ACTION_BACK;
+      }
+      break;
+
+    default:
+      if (y > 390) {
+        return (x < cx) ? TouchZone::Z_ACTION_BACK : TouchZone::Z_ACTION_PRIMARY;
+      }
+      break;
   }
-  // Middle third rows → slots A/B/C
-  if (y < 200) {
-    return TouchZone::Z_SLOT_A;
-  }
-  if (y < 280) {
-    return TouchZone::Z_SLOT_B;
-  }
-  return TouchZone::Z_SLOT_C;
+
+  (void)cy;
+  return TouchZone::None;
 }
 
 void touchInit() {
@@ -112,7 +129,7 @@ void touchInit() {
   lv_indev_drv_register(&g_indevDrv);
 
   g_cb = defaultZoneCb;
-  Serial.println(F("[touch] CST820 + LVGL indev + zones"));
+  Serial.println(F("[touch] CST820 + LVGL indev + zones v0.2"));
 }
 
 void touchSetCallback(TouchZoneCallback cb) { g_cb = cb; }
@@ -131,16 +148,25 @@ void touchPoll() {
   }
 
   if (pressed && !wasPressed) {
-    const uint32_t now = millis();
-    if ((now - g_lastZoneMs) > 250) {
-      const TouchZone z = touchHitTest(x, y);
-      if (z != TouchZone::None && g_cb) {
-        Serial.print(F("[touch] zone="));
-        Serial.println(static_cast<int>(z));
-        g_cb(z);
-        g_lastZoneMs = now;
-      }
+    g_pressStartMs = millis();
+    g_wifiHoldFired = false;
+    const TouchZone z = touchHitTest(x, y);
+    // Immediate fire for non-WiFi; WiFi requires hold
+    if (z != TouchZone::None && z != TouchZone::Z_WIFI && g_cb) {
+      Serial.print(F("[touch] zone="));
+      Serial.println(static_cast<int>(z));
+      g_cb(z);
     }
   }
+
+  if (pressed && wasPressed && !g_wifiHoldFired) {
+    const TouchZone z = touchHitTest(g_lastX, g_lastY);
+    if (z == TouchZone::Z_WIFI && (millis() - g_pressStartMs) >= kWifiHoldMs) {
+      g_wifiHoldFired = true;
+      Serial.println(F("[touch] zone=WIFI hold"));
+      if (g_cb) g_cb(TouchZone::Z_WIFI);
+    }
+  }
+
   wasPressed = pressed;
 }
