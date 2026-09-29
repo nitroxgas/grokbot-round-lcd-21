@@ -12,11 +12,13 @@ Scaffold v0.1 — não é firmware completo. **Não** fazer `pio run -t upload` 
 
 File → Open Folder nesta raiz (`platformio.ini`, `SPEC.md`, `src/`).
 
-## Build (quando o env existir)
+## Build
 
 ```bash
 pio run -e waveshare_round_21
 ```
+
+Env: `waveshare_round_21` · Arduino-PIO + LVGL 8.3 + Arduino_GFX (RGB ST7701).
 
 ## Secrets
 
