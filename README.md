@@ -28,4 +28,4 @@ cp include/secrets.h.example include/secrets.h
 
 ## Repo
 
-GitHub público — URL a preencher após create.
+https://github.com/nitroxgas/grokbot-round-lcd-21
