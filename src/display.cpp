@@ -35,7 +35,7 @@ constexpr uint32_t COL_GROKU_DOT  = 0x4FA83A;
 constexpr uint32_t COL_ESPFORGE   = 0x2EC4B6;
 constexpr uint32_t COL_ENGDIR     = 0xE23B3B;
 constexpr uint32_t COL_PRINTMAKER = 0xF0A020;
-constexpr uint32_t COL_EYE        = 0x0C0C0E;
+constexpr uint32_t COL_EYE        = 0x111111;  // bloub eye_color
 constexpr uint32_t COL_BADGE_OK   = 0x2EC4B6;  // teal check
 constexpr uint32_t COL_BADGE_ERR  = 0xE11D2E;
 
@@ -50,6 +50,16 @@ constexpr int16_t kAvSize = 96;      // main avatar body box
 constexpr int16_t kAvBaseY = kDiskCy - kAvSize / 2;
 constexpr int16_t kAvBaseX = kCx - kAvSize / 2;
 constexpr int16_t kMiniAv = 32;
+
+// Eyes v0.5 — bloub Neutral slit capsules (width:length ≈ 2.7:6.6, tilt −18°)
+constexpr int16_t kEyeW = 8;            // short axis
+constexpr int16_t kEyeL = 20;           // long axis (stadium length)
+constexpr int16_t kEyeAngle = -180;     // −18.0° in 0.1° LVGL units
+constexpr int16_t kEyeLX = -15;         // light bloub L/R asymmetry
+constexpr int16_t kEyeLY = -9;
+constexpr int16_t kEyeRX = 14;
+constexpr int16_t kEyeRY = -11;
+constexpr int16_t kEyeBlinkMin = 1;     // ~4% of length (floor 1px)
 
 enum class AvatarKind : uint8_t {
   Groku = 0,
@@ -311,15 +321,21 @@ void avatarPopCb(void* /*var*/, int32_t v) {
 }
 
 void eyeBlinkCb(void* /*var*/, int32_t v) {
-  // v: eye height 1..5; brief close
-  const lv_coord_t h = static_cast<lv_coord_t>(v);
+  // v: capsule length (long axis); shrink toward ~4% then restore
+  const lv_coord_t len = static_cast<lv_coord_t>(v);
   if (g_avEyeL) {
-    lv_obj_set_height(g_avEyeL, h);
-    lv_obj_align(g_avEyeL, LV_ALIGN_CENTER, -14, -10);
+    lv_obj_set_size(g_avEyeL, kEyeW, len);
+    lv_obj_set_style_radius(g_avEyeL, kEyeW / 2, 0);
+    lv_obj_set_style_transform_pivot_x(g_avEyeL, kEyeW / 2, 0);
+    lv_obj_set_style_transform_pivot_y(g_avEyeL, len / 2, 0);
+    lv_obj_align(g_avEyeL, LV_ALIGN_CENTER, kEyeLX, kEyeLY);
   }
   if (g_avEyeR) {
-    lv_obj_set_height(g_avEyeR, h);
-    lv_obj_align(g_avEyeR, LV_ALIGN_CENTER, 14, -10);
+    lv_obj_set_size(g_avEyeR, kEyeW, len);
+    lv_obj_set_style_radius(g_avEyeR, kEyeW / 2, 0);
+    lv_obj_set_style_transform_pivot_x(g_avEyeR, kEyeW / 2, 0);
+    lv_obj_set_style_transform_pivot_y(g_avEyeR, len / 2, 0);
+    lv_obj_align(g_avEyeR, LV_ALIGN_CENTER, kEyeRX, kEyeRY);
   }
 }
 
@@ -346,13 +362,19 @@ void resetDiskGeometry() {
     lv_obj_set_style_transform_angle(g_avatarCont, 0, 0);
   }
   if (g_avEyeL) {
-    lv_obj_set_size(g_avEyeL, 12, 5);
-    lv_obj_align(g_avEyeL, LV_ALIGN_CENTER, -14, -10);
+    lv_obj_set_size(g_avEyeL, kEyeW, kEyeL);
+    lv_obj_set_style_radius(g_avEyeL, kEyeW / 2, 0);
+    lv_obj_set_style_transform_pivot_x(g_avEyeL, kEyeW / 2, 0);
+    lv_obj_set_style_transform_pivot_y(g_avEyeL, kEyeL / 2, 0);
+    lv_obj_align(g_avEyeL, LV_ALIGN_CENTER, kEyeLX, kEyeLY);
     lv_obj_set_style_opa(g_avEyeL, LV_OPA_COVER, 0);
   }
   if (g_avEyeR) {
-    lv_obj_set_size(g_avEyeR, 12, 5);
-    lv_obj_align(g_avEyeR, LV_ALIGN_CENTER, 14, -10);
+    lv_obj_set_size(g_avEyeR, kEyeW, kEyeL);
+    lv_obj_set_style_radius(g_avEyeR, kEyeW / 2, 0);
+    lv_obj_set_style_transform_pivot_x(g_avEyeR, kEyeW / 2, 0);
+    lv_obj_set_style_transform_pivot_y(g_avEyeR, kEyeL / 2, 0);
+    lv_obj_align(g_avEyeR, LV_ALIGN_CENTER, kEyeRX, kEyeRY);
     lv_obj_set_style_opa(g_avEyeR, LV_OPA_COVER, 0);
   }
 }
@@ -415,12 +437,12 @@ void startIdleBobBlink() {
   lv_anim_set_path_cb(&g_bobAnim, lv_anim_path_ease_in_out);
   lv_anim_start(&g_bobAnim);
 
-  // Blink: eye height 5→1→5, long gap between blinks
+  // Blink: capsule length → ~4% min, long gap between blinks
   if (g_avEyeL) {
     lv_anim_init(&g_blinkAnim);
     lv_anim_set_var(&g_blinkAnim, g_avEyeL);
     lv_anim_set_exec_cb(&g_blinkAnim, eyeBlinkCb);
-    lv_anim_set_values(&g_blinkAnim, 5, 1);
+    lv_anim_set_values(&g_blinkAnim, kEyeL, kEyeBlinkMin);
     lv_anim_set_time(&g_blinkAnim, 90);
     lv_anim_set_playback_time(&g_blinkAnim, 90);
     lv_anim_set_repeat_count(&g_blinkAnim, LV_ANIM_REPEAT_INFINITE);
@@ -556,24 +578,24 @@ void startFleetCardPulse() {
   g_animRunning = true;
 }
 
-void addSlantEyes(lv_obj_t* parent, int16_t eyeW, int16_t eyeH, int16_t gap,
-                  int16_t yOff) {
-  // Both eyes tilted \\ (~20°) — short rounded rects, not dots
-  auto makeEye = [&](int16_t xOff) -> lv_obj_t* {
+void addSlitEyes(lv_obj_t* parent, int16_t eyeW, int16_t eyeL, int16_t gap,
+                 int16_t yOff) {
+  // Capsule/stadium slits (bloub Neutral): short×long, fully rounded, −18°
+  auto makeEye = [&](int16_t xOff, int16_t yExtra) -> lv_obj_t* {
     lv_obj_t* e = lv_obj_create(parent);
-    lv_obj_set_size(e, eyeW, eyeH);
+    lv_obj_set_size(e, eyeW, eyeL);
     styleBare(e);
-    lv_obj_set_style_radius(e, eyeH / 2, 0);
+    lv_obj_set_style_radius(e, eyeW / 2, 0);  // half short axis
     lv_obj_set_style_bg_color(e, lv_color_hex(COL_EYE), 0);
     lv_obj_set_style_bg_opa(e, LV_OPA_COVER, 0);
     lv_obj_set_style_transform_pivot_x(e, eyeW / 2, 0);
-    lv_obj_set_style_transform_pivot_y(e, eyeH / 2, 0);
-    lv_obj_set_style_transform_angle(e, 200, 0);  // 20.0°
-    lv_obj_align(e, LV_ALIGN_CENTER, xOff, yOff);
+    lv_obj_set_style_transform_pivot_y(e, eyeL / 2, 0);
+    lv_obj_set_style_transform_angle(e, kEyeAngle, 0);  // −18.0°
+    lv_obj_align(e, LV_ALIGN_CENTER, xOff, static_cast<int16_t>(yOff + yExtra));
     return e;
   };
-  makeEye(static_cast<int16_t>(-gap));
-  makeEye(static_cast<int16_t>(gap));
+  makeEye(static_cast<int16_t>(-gap), 0);
+  makeEye(static_cast<int16_t>(gap), 1);  // light R asymmetry
 }
 
 lv_obj_t* buildBodyGroku(lv_obj_t* parent, int16_t box) {
@@ -959,28 +981,28 @@ void buildMainAvatar(lv_obj_t* parent) {
   g_avBody[static_cast<int>(AvatarKind::PrintMaker)] =
       buildBodySquircle(g_avatarCont, kAvSize, COL_PRINTMAKER);
 
-  // Shared slanted eyes on top of body
+  // Shared slit-capsule eyes (bloub Neutral −18°) on top of body
   g_avEyeL = lv_obj_create(g_avatarCont);
-  lv_obj_set_size(g_avEyeL, 12, 5);
+  lv_obj_set_size(g_avEyeL, kEyeW, kEyeL);
   styleBare(g_avEyeL);
-  lv_obj_set_style_radius(g_avEyeL, 3, 0);
+  lv_obj_set_style_radius(g_avEyeL, kEyeW / 2, 0);
   lv_obj_set_style_bg_color(g_avEyeL, lv_color_hex(COL_EYE), 0);
   lv_obj_set_style_bg_opa(g_avEyeL, LV_OPA_COVER, 0);
-  lv_obj_set_style_transform_pivot_x(g_avEyeL, 6, 0);
-  lv_obj_set_style_transform_pivot_y(g_avEyeL, 2, 0);
-  lv_obj_set_style_transform_angle(g_avEyeL, 200, 0);
-  lv_obj_align(g_avEyeL, LV_ALIGN_CENTER, -14, -10);
+  lv_obj_set_style_transform_pivot_x(g_avEyeL, kEyeW / 2, 0);
+  lv_obj_set_style_transform_pivot_y(g_avEyeL, kEyeL / 2, 0);
+  lv_obj_set_style_transform_angle(g_avEyeL, kEyeAngle, 0);
+  lv_obj_align(g_avEyeL, LV_ALIGN_CENTER, kEyeLX, kEyeLY);
 
   g_avEyeR = lv_obj_create(g_avatarCont);
-  lv_obj_set_size(g_avEyeR, 12, 5);
+  lv_obj_set_size(g_avEyeR, kEyeW, kEyeL);
   styleBare(g_avEyeR);
-  lv_obj_set_style_radius(g_avEyeR, 3, 0);
+  lv_obj_set_style_radius(g_avEyeR, kEyeW / 2, 0);
   lv_obj_set_style_bg_color(g_avEyeR, lv_color_hex(COL_EYE), 0);
   lv_obj_set_style_bg_opa(g_avEyeR, LV_OPA_COVER, 0);
-  lv_obj_set_style_transform_pivot_x(g_avEyeR, 6, 0);
-  lv_obj_set_style_transform_pivot_y(g_avEyeR, 2, 0);
-  lv_obj_set_style_transform_angle(g_avEyeR, 200, 0);
-  lv_obj_align(g_avEyeR, LV_ALIGN_CENTER, 14, -10);
+  lv_obj_set_style_transform_pivot_x(g_avEyeR, kEyeW / 2, 0);
+  lv_obj_set_style_transform_pivot_y(g_avEyeR, kEyeL / 2, 0);
+  lv_obj_set_style_transform_angle(g_avEyeR, kEyeAngle, 0);
+  lv_obj_align(g_avEyeR, LV_ALIGN_CENTER, kEyeRX, kEyeRY);
 
   // Status badge (check / X) bottom-right
   g_avBadge = lv_obj_create(g_avatarCont);
@@ -1060,7 +1082,7 @@ lv_obj_t* buildMiniAvatar(lv_obj_t* parent, AvatarKind kind) {
     case AvatarKind::PrintMaker: body = buildBodySquircle(cont, kMiniAv, COL_PRINTMAKER); break;
   }
   (void)body;
-  addSlantEyes(cont, 5, 2, 5, -4);
+  addSlitEyes(cont, 3, 7, 5, -4);  // ~2.7:6.6 scaled for mini
   return cont;
 }
 
