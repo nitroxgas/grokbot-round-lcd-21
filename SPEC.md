@@ -67,7 +67,7 @@ Touch CST820 ──► hit-test zones ──► webhookFire() + buzzerPulse()
 WiFiManager ──► NVS creds ──► MQTT client (sprint seguinte)
 ```
 
-Framework scaffold (PO escolhe): **Arduino-PIO** (preferência default = alinhado ao macropad) **ou** ESP-IDF Waveshare demo. Default hub se George não escolher: **Arduino-PIO + LVGL 8.x**.
+Framework scaffold: **Arduino-PIO + LVGL 8.x** (PO 2026-09-29).
 
 ---
 
@@ -160,6 +160,6 @@ Igual macropad: locales `pt` (default) / `en` / `es`; WiFiManager portal 1º boo
 
 ## 10. Decisões PO pendentes (hub)
 
-1. SKU: **flat 28169** vs **2.1B 30697**  
-2. Framework scaffold: **Arduino-PIO** (default) vs **ESP-IDF**  
-3. GitHub org/user destino do repo público  
+1. ~~SKU~~ → **30697 2.1B**  
+2. ~~Framework~~ → **Arduino-PIO + LVGL**  
+3. GitHub org/user destino do repo público (em criação)  
