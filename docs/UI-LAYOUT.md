@@ -67,3 +67,16 @@ Anims app-like: idle bob+blink; working bounce+anel; confirm pop+badge check; er
 
 Ref screenshot: `docs/ui-mocks/ref-grokbot-app-avatars.jpg`
 Projeção: `proj-app-*-v0.4` / `proj-app-contact-v0.4.png`
+
+## Eyes v0.5 — slit capsules (PO 2026-09-29)
+
+**Errado v0.4:** traços diagonais tipo `\\`.
+
+**Certo:** cápsulas/stadium verticais (slit eyes), tipadas no maker 3D `printmaker/keychains/bloub-mascot/grok_bot_mascot_maker.scad`:
+- Neutral geometry: width≈2.7 length≈6.6 tilt≈**−18°** (`eye_geometry[0]`)
+- Cor olhos: `#111111` (`eye_color`)
+- Assimetria leve bloub nos centers; blink = encolher length (min ~4%)
+
+**Oficial xAI:** sem PDF de brand de avatares; [Designing Grok Bot](https://x.ai/news/designing-grok-bot) = princípio; brand zip = logos só. Proxy geométrico também em `grok-bot-avatars/` (pesquisa 16 set 2026).
+
+Projeção: `proj-eyes-compare-v05.png`, `proj-app-*-v05.*`
