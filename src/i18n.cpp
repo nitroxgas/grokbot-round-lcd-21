@@ -4,7 +4,7 @@ static Locale g_locale = Locale::Pt;
 
 // Order must match I18nId
 static const char* const kPt[] = {
-    "Grok Bot",
+    "Groku CEO",
     "parado",
     "BOOT",
     "INICIO",
@@ -34,15 +34,15 @@ static const char* const kPt[] = {
     "toque Retry",
     "WiFi timeout",
     "PrintMaker",
-    "Fab CAD",
     "EspForge",
+    "EngDir",
     "Idle",
     "Working",
     "Stand by",
 };
 
 static const char* const kEn[] = {
-    "Grok Bot",
+    "Groku CEO",
     "idle",
     "BOOT",
     "HOME",
@@ -72,15 +72,15 @@ static const char* const kEn[] = {
     "tap Retry",
     "WiFi timeout",
     "PrintMaker",
-    "Fab CAD",
     "EspForge",
+    "EngDir",
     "Idle",
     "Working",
     "Stand by",
 };
 
 static const char* const kEs[] = {
-    "Grok Bot",
+    "Groku CEO",
     "en espera",
     "BOOT",
     "INICIO",
@@ -110,8 +110,8 @@ static const char* const kEs[] = {
     "toque Retry",
     "WiFi timeout",
     "PrintMaker",
-    "Fab CAD",
     "EspForge",
+    "EngDir",
     "Idle",
     "Working",
     "Stand by",

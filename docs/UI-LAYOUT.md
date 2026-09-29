@@ -47,3 +47,23 @@ Z_SLOT_A/B/C, Z_ACTION_PRIMARY, Z_ACTION_BACK, Z_WIFI (hold).
 | FLEET | card do slot `working` com border pulse |
 
 Projeção visual: `docs/ui-mocks/proj-*.gif` + `proj-contact-v0.3.png`.
+
+## Visual language v0.4 — Grok Bot App avatars (PO 2026-09-29)
+
+**Não** usar o pentágono vermelho geométrico. Usar blobs do app:
+
+| Bot | Forma | Cor aprox. |
+|-----|-------|------------|
+| Groku CEO (HOME default) | círculo + bolinha inferior-direita | `#7AD35A` / dot `#4FA83A` |
+| EspForge | hexágono | `#2EC4B6` |
+| EngDir | gota/teardrop | `#E23B3B` |
+| PrintMaker | squircle | `#F0A020` |
+| Fab QA | pill horizontal | `#6EC8F0` |
+| Token Maxxing | gota | laranja |
+| Fab DFM | círculo | `#F05AA8` |
+
+Olhos: dois traços inclinados escuros (\\ \\), não pontos.
+Anims app-like: idle bob+blink; working bounce+anel; confirm pop+badge check; error shake+badge X; fleet mini-blobs nos cards.
+
+Ref screenshot: `docs/ui-mocks/ref-grokbot-app-avatars.jpg`
+Projeção: `proj-app-*-v0.4` / `proj-app-contact-v0.4.png`
