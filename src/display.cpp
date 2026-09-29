@@ -74,6 +74,7 @@ lv_obj_t* g_workArcs[3] = {nullptr, nullptr, nullptr};
 lv_obj_t* g_fleetHint = nullptr;
 lv_obj_t* g_onlinePill = nullptr;
 lv_obj_t* g_errorRim = nullptr;
+lv_obj_t* g_halo = nullptr;  // soft blue ring behind disk (idle breathe)
 
 lv_obj_t* g_contHome = nullptr;
 lv_obj_t* g_contFleet = nullptr;
@@ -89,8 +90,19 @@ lv_obj_t* g_fleetStatus[3] = {nullptr, nullptr, nullptr};
 lv_obj_t* g_fleetDot[3] = {nullptr, nullptr, nullptr};
 
 lv_anim_t g_diskAnim;
+lv_anim_t g_scaleAnim;
+lv_anim_t g_haloAnim;
+lv_anim_t g_arcAnim;
+lv_anim_t g_buzzAnim;
+lv_anim_t g_shakeAnim;
+lv_anim_t g_fleetAnim;
+lv_anim_t g_popAnim;
 bool g_animRunning = false;
+int g_fleetPulseIdx = -1;
 uint32_t g_lastZoneUiMs = 0;
+
+constexpr int16_t kDiskDiam = kDiskR * 2;
+constexpr int16_t kHaloPad = 14;
 
 void panelHwReset() {
   tca9554SetDirection(EXIO_LCD_RST, false);
@@ -194,29 +206,214 @@ void arcPos(float angleDeg, int16_t* ox, int16_t* oy, float rScale = 0.92f,
   *oy = static_cast<int16_t>(kCy + kArcR * cosf(rad) * rScale + yOff);
 }
 
-void diskAnimCb(void* var, int32_t v) {
+void diskBorderOpaCb(void* var, int32_t v) {
   lv_obj_set_style_border_opa(static_cast<lv_obj_t*>(var), static_cast<lv_opa_t>(v), 0);
 }
 
-void stopDiskAnim() {
-  if (g_animRunning && g_disk) {
-    lv_anim_del(g_disk, diskAnimCb);
-    g_animRunning = false;
+void diskScaleCb(void* var, int32_t v) {
+  lv_obj_t* disk = static_cast<lv_obj_t*>(var);
+  lv_obj_set_size(disk, v, v);
+  lv_obj_set_pos(disk, kCx - v / 2, kDiskCy - v / 2);
+}
+
+void haloOpaCb(void* var, int32_t v) {
+  lv_obj_set_style_border_opa(static_cast<lv_obj_t*>(var), static_cast<lv_opa_t>(v), 0);
+}
+
+void workArcSpinCb(void* /*var*/, int32_t v) {
+  for (int i = 0; i < 3; ++i) {
+    if (!g_workArcs[i]) continue;
+    const int32_t start = 20 + i * 120 + v;
+    const int32_t end = 70 + i * 120 + v;
+    lv_arc_set_angles(g_workArcs[i], start, end);
   }
 }
 
-void startDiskAnim(bool pulse) {
-  if (!g_disk) return;
-  stopDiskAnim();
+void borderWidthCb(void* var, int32_t v) {
+  lv_obj_set_style_border_width(static_cast<lv_obj_t*>(var), static_cast<lv_coord_t>(v), 0);
+}
+
+void iconShakeCb(void* var, int32_t v) {
+  lv_obj_set_pos(static_cast<lv_obj_t*>(var), kCx - 36 + static_cast<int16_t>(v),
+                 kDiskCy - 36);
+}
+
+void fleetBorderOpaCb(void* var, int32_t v) {
+  lv_obj_set_style_border_opa(static_cast<lv_obj_t*>(var), static_cast<lv_opa_t>(v), 0);
+}
+
+void resetDiskGeometry() {
+  if (g_disk) {
+    lv_obj_set_size(g_disk, kDiskDiam, kDiskDiam);
+    lv_obj_set_pos(g_disk, kCx - kDiskR, kDiskCy - kDiskR);
+    lv_obj_set_style_border_width(g_disk, 4, 0);
+    lv_obj_set_style_border_opa(g_disk, LV_OPA_COVER, 0);
+  }
+  if (g_iconCircle) {
+    lv_obj_set_pos(g_iconCircle, kCx - 36, kDiskCy - 36);
+  }
+  if (g_halo) {
+    const int16_t hr = kDiskR + kHaloPad;
+    lv_obj_set_size(g_halo, hr * 2, hr * 2);
+    lv_obj_set_pos(g_halo, kCx - hr, kDiskCy - hr);
+    lv_obj_set_style_border_opa(g_halo, LV_OPA_30, 0);
+  }
+}
+
+void resetFleetCardBorders() {
+  for (int i = 0; i < 3; ++i) {
+    if (!g_fleetCard[i]) continue;
+    lv_obj_set_style_border_color(g_fleetCard[i], lv_color_hex(COL_LINE), 0);
+    lv_obj_set_style_border_opa(g_fleetCard[i], LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(g_fleetCard[i], 2, 0);
+  }
+  g_fleetPulseIdx = -1;
+}
+
+void stopAllAnims() {
+  if (g_disk) {
+    lv_anim_del(g_disk, diskBorderOpaCb);
+    lv_anim_del(g_disk, diskScaleCb);
+    lv_anim_del(g_disk, borderWidthCb);
+  }
+  if (g_halo) lv_anim_del(g_halo, haloOpaCb);
+  if (g_workArcs[0]) lv_anim_del(g_workArcs[0], workArcSpinCb);
+  if (g_iconCircle) lv_anim_del(g_iconCircle, iconShakeCb);
+  if (g_fleetPulseIdx >= 0 && g_fleetPulseIdx < 3 && g_fleetCard[g_fleetPulseIdx]) {
+    lv_anim_del(g_fleetCard[g_fleetPulseIdx], fleetBorderOpaCb);
+  }
+  g_animRunning = false;
+}
+
+void startBorderOpaAnim(lv_obj_t* obj, uint32_t ms, int32_t lo, int32_t hi) {
+  if (!obj) return;
   lv_anim_init(&g_diskAnim);
-  lv_anim_set_var(&g_diskAnim, g_disk);
-  lv_anim_set_exec_cb(&g_diskAnim, diskAnimCb);
-  lv_anim_set_values(&g_diskAnim, 100, 255);
-  lv_anim_set_time(&g_diskAnim, pulse ? 450 : 1400);
-  lv_anim_set_playback_time(&g_diskAnim, pulse ? 450 : 1400);
+  lv_anim_set_var(&g_diskAnim, obj);
+  lv_anim_set_exec_cb(&g_diskAnim, diskBorderOpaCb);
+  lv_anim_set_values(&g_diskAnim, lo, hi);
+  lv_anim_set_time(&g_diskAnim, ms);
+  lv_anim_set_playback_time(&g_diskAnim, ms);
   lv_anim_set_repeat_count(&g_diskAnim, LV_ANIM_REPEAT_INFINITE);
   lv_anim_set_path_cb(&g_diskAnim, lv_anim_path_ease_in_out);
   lv_anim_start(&g_diskAnim);
+  g_animRunning = true;
+}
+
+void startIdleBreathe() {
+  if (!g_disk) return;
+  // Border opacity breathe ~1.4s
+  startBorderOpaAnim(g_disk, 1400, 110, 255);
+  // Slight disk scale 1.00 → ~1.045
+  lv_anim_init(&g_scaleAnim);
+  lv_anim_set_var(&g_scaleAnim, g_disk);
+  lv_anim_set_exec_cb(&g_scaleAnim, diskScaleCb);
+  lv_anim_set_values(&g_scaleAnim, kDiskDiam, kDiskDiam + 8);
+  lv_anim_set_time(&g_scaleAnim, 1400);
+  lv_anim_set_playback_time(&g_scaleAnim, 1400);
+  lv_anim_set_repeat_count(&g_scaleAnim, LV_ANIM_REPEAT_INFINITE);
+  lv_anim_set_path_cb(&g_scaleAnim, lv_anim_path_ease_in_out);
+  lv_anim_start(&g_scaleAnim);
+  // Soft blue halo breathe
+  if (g_halo) {
+    lv_obj_clear_flag(g_halo, LV_OBJ_FLAG_HIDDEN);
+    lv_anim_init(&g_haloAnim);
+    lv_anim_set_var(&g_haloAnim, g_halo);
+    lv_anim_set_exec_cb(&g_haloAnim, haloOpaCb);
+    lv_anim_set_values(&g_haloAnim, 40, 120);
+    lv_anim_set_time(&g_haloAnim, 1400);
+    lv_anim_set_playback_time(&g_haloAnim, 1400);
+    lv_anim_set_repeat_count(&g_haloAnim, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_set_path_cb(&g_haloAnim, lv_anim_path_ease_in_out);
+    lv_anim_start(&g_haloAnim);
+  }
+}
+
+void startWorkingAnims() {
+  if (!g_disk) return;
+  startBorderOpaAnim(g_disk, 450, 90, 255);
+  // Spin 3 amber arcs (~2.4s / rev)
+  if (g_workArcs[0]) {
+    lv_anim_init(&g_arcAnim);
+    lv_anim_set_var(&g_arcAnim, g_workArcs[0]);
+    lv_anim_set_exec_cb(&g_arcAnim, workArcSpinCb);
+    lv_anim_set_values(&g_arcAnim, 0, 360);
+    lv_anim_set_time(&g_arcAnim, 2400);
+    lv_anim_set_repeat_count(&g_arcAnim, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_set_path_cb(&g_arcAnim, lv_anim_path_linear);
+    lv_anim_start(&g_arcAnim);
+  }
+}
+
+void startPopScale() {
+  if (!g_disk) return;
+  // One-shot: start small, overshoot past nominal, settle at kDiskDiam
+  lv_anim_init(&g_popAnim);
+  lv_anim_set_var(&g_popAnim, g_disk);
+  lv_anim_set_exec_cb(&g_popAnim, diskScaleCb);
+  lv_anim_set_values(&g_popAnim, kDiskDiam - 20, kDiskDiam);
+  lv_anim_set_time(&g_popAnim, 420);
+  lv_anim_set_playback_time(&g_popAnim, 0);
+  lv_anim_set_repeat_count(&g_popAnim, 0);
+  lv_anim_set_path_cb(&g_popAnim, lv_anim_path_overshoot);
+  lv_anim_start(&g_popAnim);
+  g_animRunning = true;
+}
+
+void startErrorAnims() {
+  if (!g_disk) return;
+  // Red rim buzz (border width)
+  lv_anim_init(&g_buzzAnim);
+  lv_anim_set_var(&g_buzzAnim, g_disk);
+  lv_anim_set_exec_cb(&g_buzzAnim, borderWidthCb);
+  lv_anim_set_values(&g_buzzAnim, 3, 10);
+  lv_anim_set_time(&g_buzzAnim, 90);
+  lv_anim_set_playback_time(&g_buzzAnim, 90);
+  lv_anim_set_repeat_count(&g_buzzAnim, LV_ANIM_REPEAT_INFINITE);
+  lv_anim_set_path_cb(&g_buzzAnim, lv_anim_path_ease_in_out);
+  lv_anim_start(&g_buzzAnim);
+  // Slight icon shake
+  if (g_iconCircle) {
+    lv_anim_init(&g_shakeAnim);
+    lv_anim_set_var(&g_shakeAnim, g_iconCircle);
+    lv_anim_set_exec_cb(&g_shakeAnim, iconShakeCb);
+    lv_anim_set_values(&g_shakeAnim, -4, 4);
+    lv_anim_set_time(&g_shakeAnim, 70);
+    lv_anim_set_playback_time(&g_shakeAnim, 70);
+    lv_anim_set_repeat_count(&g_shakeAnim, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_set_path_cb(&g_shakeAnim, lv_anim_path_ease_in_out);
+    lv_anim_start(&g_shakeAnim);
+  }
+  g_animRunning = true;
+}
+
+int findWorkingFleetSlot() {
+  const char* stats[3] = {g_slotA, g_slotB, g_slotC};
+  for (int i = 0; i < 3; ++i) {
+    if (stats[i] == nullptr) continue;
+    if (std::strstr(stats[i], "Work") || std::strstr(stats[i], "work") ||
+        std::strstr(stats[i], "TRAB") || std::strstr(stats[i], "Trab")) {
+      return i;
+    }
+  }
+  return 1;  // default mid card (B)
+}
+
+void startFleetCardPulse() {
+  resetFleetCardBorders();
+  const int idx = findWorkingFleetSlot();
+  if (idx < 0 || idx > 2 || !g_fleetCard[idx]) return;
+  g_fleetPulseIdx = idx;
+  lv_obj_set_style_border_color(g_fleetCard[idx], lv_color_hex(COL_AMBER), 0);
+  lv_obj_set_style_border_width(g_fleetCard[idx], 3, 0);
+  lv_anim_init(&g_fleetAnim);
+  lv_anim_set_var(&g_fleetAnim, g_fleetCard[idx]);
+  lv_anim_set_exec_cb(&g_fleetAnim, fleetBorderOpaCb);
+  lv_anim_set_values(&g_fleetAnim, 80, 255);
+  lv_anim_set_time(&g_fleetAnim, 550);
+  lv_anim_set_playback_time(&g_fleetAnim, 550);
+  lv_anim_set_repeat_count(&g_fleetAnim, LV_ANIM_REPEAT_INFINITE);
+  lv_anim_set_path_cb(&g_fleetAnim, lv_anim_path_ease_in_out);
+  lv_anim_start(&g_fleetAnim);
   g_animRunning = true;
 }
 
@@ -298,11 +495,15 @@ void applyLabels() {
 }
 
 void refreshStateVisuals() {
+  stopAllAnims();
+  resetDiskGeometry();
+  resetFleetCardBorders();
   hideAllStateConts();
   showWorkArcs(false);
   if (g_onlinePill) lv_obj_add_flag(g_onlinePill, LV_OBJ_FLAG_HIDDEN);
   if (g_fleetHint) lv_obj_add_flag(g_fleetHint, LV_OBJ_FLAG_HIDDEN);
   if (g_errorRim) lv_obj_add_flag(g_errorRim, LV_OBJ_FLAG_HIDDEN);
+  if (g_halo) lv_obj_add_flag(g_halo, LV_OBJ_FLAG_HIDDEN);
 
   // default: show title/message mid band
   if (g_titleLabel) lv_obj_clear_flag(g_titleLabel, LV_OBJ_FLAG_HIDDEN);
@@ -310,8 +511,8 @@ void refreshStateVisuals() {
   if (g_disk) lv_obj_clear_flag(g_disk, LV_OBJ_FLAG_HIDDEN);
 
   uint32_t ring = COL_IDLE;
-  bool breathe = false;
-  bool pulse = false;
+  enum class AnimMode : uint8_t { None, Idle, Working, Pop, Error, Fleet };
+  AnimMode anim = AnimMode::None;
 
   switch (g_state) {
     case UiState::BOOT:
@@ -323,7 +524,7 @@ void refreshStateVisuals() {
       showMark(true, COL_RED);
       showIcon(false, COL_RED, "");
       ring = COL_IDLE;
-      breathe = true;
+      anim = AnimMode::Idle;
       if (g_titleLabel) lv_obj_add_flag(g_titleLabel, LV_OBJ_FLAG_HIDDEN);
       if (g_messageLabel) lv_obj_add_flag(g_messageLabel, LV_OBJ_FLAG_HIDDEN);
       break;
@@ -338,7 +539,7 @@ void refreshStateVisuals() {
       showMark(true, COL_RED);
       showIcon(false, COL_RED, "");
       ring = COL_IDLE;
-      breathe = true;
+      anim = AnimMode::Idle;
       break;
 
     case UiState::FLEET_STATUS:
@@ -355,6 +556,7 @@ void refreshStateVisuals() {
       if (g_titleLabel) lv_obj_add_flag(g_titleLabel, LV_OBJ_FLAG_HIDDEN);
       if (g_messageLabel) lv_obj_add_flag(g_messageLabel, LV_OBJ_FLAG_HIDDEN);
       ring = COL_LINE;
+      anim = AnimMode::Fleet;
       break;
 
     case UiState::TOUCH_CONFIRM:
@@ -366,6 +568,7 @@ void refreshStateVisuals() {
       showMark(false, COL_RED);
       showIcon(true, COL_GREEN, LV_SYMBOL_OK);
       ring = COL_GREEN;
+      anim = AnimMode::Pop;
       break;
 
     case UiState::WORKING:
@@ -378,7 +581,7 @@ void refreshStateVisuals() {
       showIcon(false, COL_RED, "");
       showWorkArcs(true);
       ring = COL_AMBER;
-      pulse = true;
+      anim = AnimMode::Working;
       break;
 
     case UiState::DONE:
@@ -390,6 +593,7 @@ void refreshStateVisuals() {
       showMark(true, COL_GREEN);
       showIcon(false, COL_RED, "");
       ring = COL_GREEN;
+      anim = AnimMode::Pop;
       break;
 
     case UiState::ERROR:
@@ -402,7 +606,7 @@ void refreshStateVisuals() {
       showMark(false, COL_RED);
       showIcon(true, COL_RED, "!");
       ring = COL_RED;
-      pulse = true;
+      anim = AnimMode::Error;
       break;
   }
 
@@ -411,11 +615,13 @@ void refreshStateVisuals() {
     lv_obj_set_style_border_opa(g_disk, LV_OPA_COVER, 0);
   }
 
-  if (breathe || pulse) {
-    startDiskAnim(pulse);
-  } else {
-    stopDiskAnim();
-    if (g_disk) lv_obj_set_style_border_opa(g_disk, LV_OPA_COVER, 0);
+  switch (anim) {
+    case AnimMode::Idle:    startIdleBreathe(); break;
+    case AnimMode::Working: startWorkingAnims(); break;
+    case AnimMode::Pop:     startPopScale(); break;
+    case AnimMode::Error:   startErrorAnims(); break;
+    case AnimMode::Fleet:   startFleetCardPulse(); break;
+    case AnimMode::None:    break;
   }
 
   applyLabels();
@@ -498,6 +704,22 @@ void buildGrokMark(lv_obj_t* parent) {
 }
 
 void buildCenterDisk(lv_obj_t* parent) {
+  // Soft blue halo behind disk (idle breathe) — created first for z-order
+  g_halo = lv_obj_create(parent);
+  {
+    const int16_t hr = kDiskR + kHaloPad;
+    lv_obj_set_size(g_halo, hr * 2, hr * 2);
+    lv_obj_set_pos(g_halo, kCx - hr, kDiskCy - hr);
+  }
+  lv_obj_set_style_radius(g_halo, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_opa(g_halo, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(g_halo, 3, 0);
+  lv_obj_set_style_border_color(g_halo, lv_color_hex(COL_IDLE), 0);
+  lv_obj_set_style_border_opa(g_halo, LV_OPA_30, 0);
+  lv_obj_set_style_pad_all(g_halo, 0, 0);
+  lv_obj_clear_flag(g_halo, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(g_halo, LV_OBJ_FLAG_HIDDEN);
+
   g_disk = lv_obj_create(parent);
   lv_obj_set_size(g_disk, kDiskR * 2, kDiskR * 2);
   lv_obj_set_pos(g_disk, kCx - kDiskR, kDiskCy - kDiskR);
@@ -776,7 +998,7 @@ void displayInit() {
 
   buildUi();
   displaySetState(UiState::HOME);
-  Serial.println(F("[display] UI v0.2 screens ready"));
+  Serial.println(F("[display] UI v0.3 anim polish ready"));
 }
 
 void displaySetState(UiState s) {
