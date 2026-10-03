@@ -3,7 +3,7 @@
 **Projeto:** EspForge / George · **slug:** `grokbot-round-lcd-21`  
 **Board:** Waveshare **ESP32-S3-Touch-LCD-2.1** (**SKU 30697 · ESP32-S3-Touch-LCD-2.1B** (vidro 2.5D; PCB igual ao flat))  
 **HW pack:** [docs/HW-LEAD-PACK.md](./docs/HW-LEAD-PACK.md)  
-**Status:** produto standalone. **Sem Home Assistant. Sem Awtrix.** Scaffold LVGL + stubs. **Não** é firmware completo.  
+**Status:** produto standalone. **Sem Home Assistant. Sem Awtrix.** UI LVGL + comunicação real (MQTT 1 tópico / webhook POST / WiFiManager). **Não** é firmware completo.  
 **Repo alvo:** GitHub **público** (Cursor IDE). Sem Origin neste projeto.  
 **Flash:** proibido sem ok explícito do George.
 
@@ -31,14 +31,15 @@ Construir um **companheiro de mesa circular** para o Grok Bot:
 | R1 | UI circular frota Grok Bot (slots, status, animações) | HOME LVGL stub + wireframes redondos |
 | R2 | Touch → ações webhook (substitui MX) | Stub touch zones + debounce lógico |
 | R3 | Buzzer feedback (tap / confirm / error) | Stub `buzzer.*` via EXIO8 |
-| R4 | MQTT inbound → display | Mesmo contrato do macropad, tópicos `round` |
-| R5 | Webhook outbound → Grok Bot | Paths por ação touch |
+| R4 | MQTT inbound → display | **Um** tópico por pessoa (só em `secrets.h`); 4 corpos JSON distinguidos por campos |
+| R5 | Webhook outbound → Grok Bot | POST HTTP real; base/token só em `secrets.h`; paths por ação touch |
 | R6 | WiFiManager + NVS | SPEC + stub |
 | R7 | i18n `pt`/`en`/`es` | Stub tabelas |
 | R8 | `pio run` SUCCESS no env Waveshare | Meta do scaffold |
 | R9 | Repo GitHub público | Hub cria + URL |
 
-**Fora de v0.1:** OTA, flash HW, case 3D, MQTT/HTTP reais, animações pixel-perfect do app, mic/speaker (placa não tem).
+**Fora de v0.1:** OTA, flash HW, case 3D, animações pixel-perfect do app, mic/speaker (placa não tem).  
+**v0.3:** MQTT (1 subscribe) e webhook (POST) reais; WiFiManager com portal no 1º boot.
 
 ---
 
@@ -62,10 +63,13 @@ I2C ocupado: `0x15, 0x20, 0x51, 0x6B, 0x7E`.
 ## 3. Arquitetura software
 
 ```
-MQTT broker / Grok Bot ──► mqttApply() ──► UI state machine ──► LVGL (round)
-Touch CST820 ──► hit-test zones ──► webhookFire() + buzzerPulse()
-WiFiManager ──► NVS creds ──► MQTT client (sprint seguinte)
+MQTT broker / Grok Bot ──► 1 subscribe (MQTT_TOPIC) ──► mqttApply(json) ──► UI state machine ──► LVGL (round)
+Touch CST820 ──► hit-test zones ──► webhookFire() → HTTP POST (WEBHOOK_BASE) + buzzerPulse()
+WiFiManager (portal 1º boot) ──► creds WiFi em NVS ──► mqttLoop() connect/subscribe/reconnect
+secrets.h (gitignored) ──► WEBHOOK_BASE/TOKEN · MQTT_HOST/PORT/TLS/USER/PASS/TOPIC
 ```
+
+Sem `secrets.h` (ou campos vazios) o binário compila, mas não faz POST nem liga ao broker. Não há URL nem tópico embutidos no código.
 
 Framework scaffold: **Arduino-PIO + LVGL 8.x** (PO 2026-09-29).
 
@@ -94,26 +98,32 @@ Touch zones (lógicos, não GPIO):
 
 ---
 
-## 5. MQTT (inbound) — tópicos `round`
+## 5. MQTT (inbound) — um tópico por pessoa
 
-Prefixo: `grokbot/round/` (não reutilizar `macropad` para não colidir).
+O dispositivo faz **um** `subscribe` no tópico `MQTT_TOPIC` de `secrets.h`. Não há prefixo nem tópico fixo no firmware.  
+Broker (`MQTT_HOST`/`MQTT_PORT`), `MQTT_TLS` (1 = `WiFiClientSecure`, 0 = `WiFiClient`; sem CA embutida), `MQTT_USER`/`MQTT_PASS` vêm só de `secrets.h`. Se host, user, pass ou tópico estiver vazio, **não liga** (sem broker anónimo). Reconnect automático a cada 5 s enquanto houver WiFi.
 
-| Tópico | Efeito |
-|--------|--------|
-| `grokbot/round/ui/home` | `title`/`message` → HOME |
-| `grokbot/round/ui/state` | `state` enum |
-| `grokbot/round/status` | FLEET_STATUS · `slot`+`text` |
-| `grokbot/round/anim` | `anim` = `idle\|working\|done\|error` (+ `slot` opcional) |
+O payload é um dos quatro corpos JSON já existentes, distinguidos pelos campos:
+
+| Campos no JSON | Efeito |
+|----------------|--------|
+| `title` / `message` | HOME (`title` 39, `message` 79 chars) |
+| `state` | enum de estado |
+| `slot` + `text` (ou só `text`) | FLEET_STATUS |
+| `anim` (+ `slot` opcional) | `anim` = `idle\|working\|done\|error` |
+
+Ordem de deteção: `anim` → `state` → `text` → `title`/`message`. Sem envelope novo.
 
 Estados: `BOOT`, `HOME`, `FLEET_STATUS`, `TOUCH_CONFIRM`, `WORKING`, `DONE`, `ERROR`.  
-Limites de string: iguais ao macropad (title 39, message 79, …).  
-Tópicos e paths **não** traduzidos (EN técnico).
+Paths e chaves JSON **não** traduzidos (EN técnico).
+
+Reserva (desligado por defeito, **não** é o caminho normal): poll HTTP ao webhook em intervalo longo, só se MQTT não for viável para alguém.
 
 ---
 
 ## 6. Webhook (outbound)
 
-Base: `CFG_WEBHOOK_BASE` (secrets). Corpo JSON:
+POST HTTP(S) real (`HTTPClient`). URL = `WEBHOOK_BASE` + path; `WEBHOOK_BASE` e `WEBHOOK_TOKEN` (opcional, `Authorization: Bearer`) vêm **só** de `secrets.h`. Base vazia → **não há POST**. `https://` usa `WiFiClientSecure` sem CA embutida. Corpo JSON:
 
 ```json
 {"source":"round-lcd-21","event":"<id>","slot":"<optional>"}
@@ -143,7 +153,7 @@ Duty curto; silenciável por NVS `buzzer_enabled`.
 
 ## 8. i18n / WiFiManager
 
-Igual macropad: locales `pt` (default) / `en` / `es`; WiFiManager portal 1º boot; reconfig por zone WIFI hold; sem HA/Awtrix.
+Igual macropad: locales `pt` (default) / `en` / `es`; WiFiManager portal 1º boot (AP `GrokBot-Round`, não bloqueante, password WiFi fica em NVS — nunca em `secrets.h`); reconfig por zone WIFI hold; sem HA/Awtrix.
 
 ---
 
