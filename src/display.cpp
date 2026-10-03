@@ -4,6 +4,7 @@
 #include "tca9554.h"
 #include "i18n.h"
 #include "webhook.h"
+#include "wifi_stub.h"
 #include "buzzer.h"
 
 #include <Arduino_GFX_Library.h>
@@ -219,6 +220,8 @@ void fireZone(TouchZone zone) {
     displaySetState(UiState::HOME);
   } else if (zone != TouchZone::Z_WIFI) {
     displaySetState(UiState::TOUCH_CONFIRM);
+  } else {
+    wifiStubStartPortal();
   }
   webhookFire(ev);
   buzzerPulse(BuzzerPattern::CONFIRM);

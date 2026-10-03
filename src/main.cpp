@@ -16,7 +16,7 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println();
-  Serial.println(F("=== grokbot-round-lcd-21 v0.2 ==="));
+  Serial.println(F("=== grokbot-round-lcd-21 v0.3 ==="));
   Serial.println(F("SKU 30697 2.1B · Arduino-PIO+LVGL · no HA/Awtrix"));
 
   i18nSetLocale(Locale::Pt);
@@ -42,4 +42,6 @@ void loop() {
 
   displayTick();
   touchPoll();
+  wifiStubLoop();
+  mqttLoop();
 }
