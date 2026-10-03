@@ -6,18 +6,40 @@
 #define CFG_POLL_MS 10UL
 #endif
 
-#ifndef CFG_WEBHOOK_BASE
-#define CFG_WEBHOOK_BASE "https://example.invalid/webhook"
+// Webhook base/token and MQTT broker/topic live only in include/secrets.h
+// (gitignored, compiled into each person's binary). Without that file every
+// field is empty, which disables the webhook POST and the MQTT connection.
+// There is intentionally no baked-in URL or topic here.
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
+#warning "include/secrets.h missing: webhook + MQTT disabled (cp include/secrets.h.example include/secrets.h)"
 #endif
 
-#ifndef CFG_MQTT_PREFIX
-#define CFG_MQTT_PREFIX "grokbot/round"
+#ifndef WEBHOOK_BASE
+#define WEBHOOK_BASE ""
 #endif
-
-#define MQTT_TOPIC_UI_HOME  CFG_MQTT_PREFIX "/ui/home"
-#define MQTT_TOPIC_UI_STATE CFG_MQTT_PREFIX "/ui/state"
-#define MQTT_TOPIC_STATUS   CFG_MQTT_PREFIX "/status"
-#define MQTT_TOPIC_ANIM     CFG_MQTT_PREFIX "/anim"
+#ifndef WEBHOOK_TOKEN
+#define WEBHOOK_TOKEN ""
+#endif
+#ifndef MQTT_HOST
+#define MQTT_HOST ""
+#endif
+#ifndef MQTT_PORT
+#define MQTT_PORT 8883
+#endif
+#ifndef MQTT_TLS
+#define MQTT_TLS 1
+#endif
+#ifndef MQTT_USER
+#define MQTT_USER ""
+#endif
+#ifndef MQTT_PASS
+#define MQTT_PASS ""
+#endif
+#ifndef MQTT_TOPIC
+#define MQTT_TOPIC ""
+#endif
 
 #define LCD_H_RES 480
 #define LCD_V_RES 480
